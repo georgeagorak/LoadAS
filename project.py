@@ -47,5 +47,20 @@ def generate_apps_list(s):
     else:
         raise LookupError("str does not match rexp:\n\n" + str + "should match regular expression:\n\n ^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$")
     return app_dict
+
+def save_apps_2_setup_file(list,filename="session"):
+        with open(f"{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
+            for app in list:
+                run_command = subprocess.check_output(f"ps -p {app['PID']} -o cmd=",shell=True,text=True)
+                logger.info(f"The PID:{app['PID']}, is {run_command} command")
+                file.write(f"{processed_run_command(run_command)}")
+
+def processed_run_command(cmd_path):
+    if "gjs" not in cmd_path: #avoids gnome-shell 
+        cmd_path = os.path.basename(cmd_path)
+        if "gnome-terminal" in cmd_path:
+            cmd_path = cmd_path.removesuffix('-server\n') + '\n' # if gnome terminal is open!
+        return cmd_path
+    return '' #give empty string to write()
 if __name__ == "__main__":
     main()
