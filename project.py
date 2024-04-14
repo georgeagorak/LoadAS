@@ -4,12 +4,81 @@ import subprocess
 import re
 import os
 
+class User_App:
+    def __init__(self, PID, x_offset, y_offset, width, height):
+        self.PID = int(PID)
+        self.x_offset = int(x_offset)
+        self.y_offset = int(y_offset)
+        self.width = int(width)
+        self.height = int(height)
+
+    def __str__(self):
+        return f"PID: {self.PID}, x_offset: {self.x_offset},y_offset: {self.y_offset},width: {self.width},height: {self.height}"
+    
+    @property
+    def PID(self):
+        return self._PID
+    @PID.setter
+    def PID(self,PID):
+        try:
+            int(PID)
+        except TypeError:
+            raise TypeError("PID must be integer string or integer")
+        self._PID = PID
+
+    @property
+    def x_offset(self):
+        return self._x_offset
+    @x_offset.setter
+    def x_offset(self,x_offset):
+        try:
+            int(x_offset)
+        except TypeError:
+            raise TypeError("PID must be integer string or integer")
+        self._x_offset = x_offset
+
+    @property
+    def y_offset(self):
+        return self._y_offset
+    @y_offset.setter
+    def y_offset(self,y_offset):
+        try:
+            int(y_offset)
+        except TypeError:
+            raise TypeError("PID must be integer string or integer")
+        self._y_offset = y_offset
+
+    @property
+    def width(self):
+        return self._width
+    
+    @width.setter
+    def width(self,width):
+        try:
+            int(width)
+        except TypeError:
+            raise TypeError("PID must be integer string or integer")
+        self._width = width
+
+    @property
+    def height(self):
+        return self._height
+
+    @height.setter
+    def height(self,height):
+        try:
+            int(height)
+        except TypeError:
+            raise TypeError("PID must be integer string or integer")
+        self._height = height
 
 def main():
     logging.basicConfig(filename="myapp.log", level=logging.INFO)
     logger.info("START")
 
     app_list = get_active_apps_info()
+    save_apps_2_setup_file(app_list)
+
     logger.info("END")
 
 def get_active_apps_info():
@@ -19,34 +88,26 @@ def get_active_apps_info():
     logger.info("ran wmctrl cmd and created apps_info_temp.txt")
 
     # read line by line the output of the capture command
-    apps_list = []
+    app_list = []
     with open("apps_info_temp.txt", 'r') as file:
         logger.info("opened apps_info_temp.txt")
         for line in file:
-            apps_dict = generate_apps_list(line)
-            apps_list.append(apps_dict)
+            app = generate_app_info(line)
+            app_list.append(app)
 
     #return the relevent captured data (dic or list)
-    logger.info(apps_list)
-    return apps_list
+    logger.info(app_list)
+    return app_list
 
-def generate_apps_list(s):
+def generate_app_info(s):
     if info := re.match(r"^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$",s):
     # created with help of: https://regex101.com/r/Op2GDF/1
         # capture relevent information (dic or list) - re
         logger.info("pattern matched in apps_info_temp.txt")
-        app_dict = {"window_id":info.group(1),
-                        "desktop number ":info.group(2),
-                        "PID":info.group(3),
-                        "x-offset":info.group(4),
-                        "y-offset":info.group(5),
-                        "width":info.group(6),
-                        "height":info.group(7),
-                        "client-machine-name":info.group(8),
-                        "window-title":info.group(9),}
+        temp_user_App = User_App(info.group(3),info.group(4),info.group(5),info.group(6),info.group(7))
     else:
         raise LookupError("str does not match rexp:\n\n" + str + "should match regular expression:\n\n ^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$")
-    return app_dict
+    return temp_user_App
 
 def save_apps_2_setup_file(list,filename="session"):
         with open(f"{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
@@ -54,6 +115,14 @@ def save_apps_2_setup_file(list,filename="session"):
                 run_command = subprocess.check_output(f"ps -p {app['PID']} -o cmd=",shell=True,text=True)
                 logger.info(f"The PID:{app['PID']}, is {run_command} command")
                 file.write(f"{processed_run_command(run_command)}")
+    with open(f"{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
+        for app in list:
+            run_command = subprocess.check_output(f"ps -p {app.PID} -o cmd=",shell=True,text=True)
+            if int(app.PID) < 100:
+                print("Beware, open flatpack software going to be ignored and it won't included session file. (it won't loaded or open!)")
+                continue # skip/stop from writing the flatpack to the file!
+            logger.info(f"The PID:{app.PID}, is {run_command} command")
+            file.write(f"{processed_run_command(run_command)}")
 
 def processed_run_command(cmd_path):
     if "gjs" not in cmd_path: #avoids gnome-shell 
