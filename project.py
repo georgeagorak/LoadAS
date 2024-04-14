@@ -85,8 +85,15 @@ def main():
     logging.basicConfig(filename="myapp.log", level=logging.INFO)
     logger.info("START")
 
-    app_list = get_active_apps_info()
-    save_apps_2_setup_file(app_list)
+    #Check for os platform...
+    if sys.platform.startswith("linux"):
+            print("Beware, open flatpack software going to be ignored and it won't included session file. (it won't loaded or open!)")
+            app_list = get_active_apps_info()
+            save_apps_2_setup_file(app_list)
+    elif sys.platform.startswith("win32"):
+        print("Windows is not yet supported!")
+    elif sys.platform.startswith("darwin"):
+        print("macOS is not yet supported!")
 
     logger.info("END")
 
@@ -141,5 +148,6 @@ def processed_run_command(cmd_path):
             cmd_path = cmd_path.removesuffix('-server\n') + '\n' # if gnome terminal is open!
         return cmd_path
     return '' #give empty string to write()
+
 if __name__ == "__main__":
     main()
