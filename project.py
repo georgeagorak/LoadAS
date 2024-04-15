@@ -4,6 +4,7 @@ import subprocess
 import re
 import os
 import sys
+import csv
 
 class User_App:
     def __init__(self, PID, x_offset, y_offset, width, height,title):
@@ -87,7 +88,7 @@ def main():
 
     #Check for os platform...
     if sys.platform.startswith("linux"):
-            print("Beware, open flatpack software going to be ignored and it won't included session file. (it won't loaded or open!)")
+            #load_app_session("session.sup")
             app_list = get_active_apps_info()
             save_apps_2_setup_file(app_list)
     elif sys.platform.startswith("win32"):
@@ -127,27 +128,69 @@ def generate_app_info(s):
     return temp_user_App
 
 def save_apps_2_setup_file(list,filename="session"):
-        with open(f"{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
-            for app in list:
-                run_command = subprocess.check_output(f"ps -p {app['PID']} -o cmd=",shell=True,text=True)
-                logger.info(f"The PID:{app['PID']}, is {run_command} command")
-                file.write(f"{processed_run_command(run_command)}")
-    with open(f"{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
+    # TODO needs some further dev
+    # saved_filename = os.path.basename(os.path.abspath(filename))
+    # if saved_filename == filename:
+    #     filename = append_file_name(filename)
+    if not os.path.isdir("user_sessions/"):
+        os.mkdir("user_sessions/")
+    with open(f"user_sessions/{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
+        writer = csv.DictWriter(file,fieldnames=["command","x_offset","y_offset","width","height"])
         for app in list:
             try:
                 run_command = subprocess.check_output(f"ps -p {app.PID} -o cmd=",shell=True,text=True)
                 logger.info(f"The PID:{app.PID}, is {run_command} command")
-                file.write(f"{processed_run_command(run_command)}")
+                isValidCmd,run_command = processed_run_command(run_command)
+                if isValidCmd:
+                    writer.writerow({"command": f"{run_command.rstrip()}",
+                                    "x_offset": app.x_offset,
+                                    "y_offset": app.y_offset,
+                                    "width": app.width,
+                                    "height": app.height})
             except subprocess.CalledProcessError:
-                print(f"Flatpak applications are not supported, {app.title} won't be added to a session file (won't be ran/loaded)")
+                print(f"Flatpak applications are not supported: '{app.title}' application won't be added to a session file (won't be ran/loaded)")
 
 def processed_run_command(cmd_path):
     if "gjs" not in cmd_path: #avoids gnome-shell 
         cmd_path = os.path.basename(cmd_path)
         if "gnome-terminal" in cmd_path:
             cmd_path = cmd_path.removesuffix('-server\n') + '\n' # if gnome terminal is open!
-        return cmd_path
-    return '' #give empty string to write()
+        return [True,cmd_path]
+    return [False,''] #give empty string to write()
+
+def load_app_session(filename):
+    session_files_storage = "user_sessions/"
+    #initial checks
+    if not os.path.isdir("user_sessions/"):
+        raise NameError("There are no session files to load: user_sessions/ does not exits - fix: create a session file.")
+    if not isSessionFile(session_files_storage):
+        raise NameError("There are no session files to load: user_sessions/ does exits but no single .sep session file could be found (deleted manually?) - fix: create a session file.")
+    
+    #TODO subprocess.check_output first for confirming that the commands work
+
+    with open(f"{session_files_storage}{filename}","r") as file:
+        for line in file:
+            try:
+                subprocess.Popen(f"{line}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError:
+                print(f"Following app: '{line}', is not longer installed, please ")
+
+def isSessionFile(path):
+    for file in os.listdir(path):
+        if file.endswith(".sup"):
+            return True
+    return False
+    
+
+# TODO needs some further dev
+# def append_file_name(name):
+#     counter = 0
+#     name_suffix = ''
+#     filename = name + "{}.sup"
+#     while os.path.isfile(filename.format(name_suffix)):
+#         counter += 1
+#         name_suffix += str(counter)
+#     filename = filename.format(counter)
 
 if __name__ == "__main__":
     main()
