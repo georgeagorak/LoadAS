@@ -21,9 +21,11 @@ def main():
 
     #Check for os platform...
     if sys.platform == "linux":
-            load_app_session("session.sup")
-            # app_list = get_active_apps_info()
-            # save_apps_2_setup_file(app_list)
+            #load_app_session("session.sup")
+            app_list = get_active_apps_info()
+            save_apps_2_setup_file(app_list)
+            # ans = input('Closing all current running apps... are you sure?\nIf so, please save any work currently open before proceeding: ')
+            # close_active_apps(ans,app_list)
     elif sys.platform == "win32":
         print("Windows is not yet supported!")
     elif sys.platform == "darwin":
@@ -69,6 +71,7 @@ def save_apps_2_setup_file(list,filename="session"):
         os.mkdir("user_sessions/")
     with open(f"user_sessions/{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
         writer = csv.DictWriter(file,fieldnames=["command","x_offset","y_offset","width","height"])
+        list = filter_out_app_from_list(list,['gjs'])
         for app in list:
             try:
                 run_command = subprocess.check_output(f"ps -p {app.PID} -o cmd=",shell=True,text=True)
@@ -82,14 +85,14 @@ def save_apps_2_setup_file(list,filename="session"):
                                     "height": app.height})
             except subprocess.CalledProcessError:
                 print(f"Flatpak applications are not supported: '{app.title}' application won't be added to a session file (won't be ran/loaded)")
+                logger.info(f"Flatpak app: {app.title}")
+                continue
 
 def processed_run_command(cmd_path):
-    if "gjs" not in cmd_path: #avoids gnome-shell 
-        cmd_path = os.path.basename(cmd_path)
-        if "gnome-terminal" in cmd_path:
-            cmd_path = cmd_path.removesuffix('-server\n') + '\n' # if gnome terminal is open!
-        return [True,cmd_path]
-    return [False,''] #give empty string to write()
+    cmd_path = os.path.basename(cmd_path)
+    if "gnome-terminal" in cmd_path:
+        cmd_path = cmd_path.removesuffix('-server\n') + '\n' # if gnome terminal is open!
+    return [True,cmd_path.removesuffix('\n')]
 
 def load_app_session(filename):
     session_files_storage = "user_sessions/"
@@ -155,6 +158,30 @@ def app_cmd(app_str):
         if app_name in app_str:
             return linux_cmds.database[app_name]
     return None
+
+def close_active_apps(s,active_apps):
+    if s.lower() == 'yes' or s.lower() == 'y':
+        filtered_active_apps = filter_out_app_from_list(active_apps,['gnome-terminal','code','gjs'])# allows for more to ignore/remove - when closing apps, LoadAS shoudl not be closed!
+        for app in filtered_active_apps:
+            subprocess.run(f"kill -9 {app.PID}",shell=True)
+
+def filter_out_app_from_list(ls,app_names):
+    remove_index = []
+    for app_name in app_names:
+        for app in ls:
+            try:
+                run_command = subprocess.check_output(f"ps -p {app.PID} -o cmd=",shell=True,text=True)
+                isValid, run_command_processed = processed_run_command(run_command)
+            except subprocess.CalledProcessError:
+                print(f"Flatpak applications are not supported: '{app.title}'")
+                logger.info(f"Flatpak app: {app.title}")
+                continue
+            if isValid:
+                if app_name in run_command_processed or app_name in run_command:
+                    remove_index.append(app)
+    ls = [a for a in ls if a not in remove_index]
+    
+    return ls
 
 # TODO needs some further dev
 # def append_file_name(name):
