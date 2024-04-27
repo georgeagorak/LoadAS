@@ -160,4 +160,4 @@ cython_debug/
 #.idea/
 apps_info_temp_old.txt
 apps_info_temp.txt
-session.sup
+*.sup

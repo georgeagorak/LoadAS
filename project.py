@@ -62,14 +62,11 @@ def generate_app_info(s):
         raise LookupError("str does not match rexp:\n\n" + str + "should match regular expression:\n\n ^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$")
     return temp_user_App
 
-def save_apps_2_setup_file(list,filename="session"):
+def save_apps_2_setup_file(list,filename="session",folder_path="user_sessions/"):
     # TODO needs some further dev
-    # saved_filename = os.path.basename(os.path.abspath(filename))
-    # if saved_filename == filename:
-    #     filename = append_file_name(filename)
-    if not os.path.isdir("user_sessions/"):
-        os.mkdir("user_sessions/")
-    with open(f"user_sessions/{filename}.sup", "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
+    file_path= create_file_path(filename,folder_path)
+    
+    with open(file_path, "w") as file: # .sup - (short for save user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
         writer = csv.DictWriter(file,fieldnames=["command","x_offset","y_offset","width","height"])
         list = filter_out_app_from_list(list,['gjs'])
         for app in list:
@@ -183,15 +180,25 @@ def filter_out_app_from_list(ls,app_names):
     
     return ls
 
-# TODO needs some further dev
-# def append_file_name(name):
-#     counter = 0
-#     name_suffix = ''
-#     filename = name + "{}.sup"
-#     while os.path.isfile(filename.format(name_suffix)):
-#         counter += 1
-#         name_suffix += str(counter)
-#     filename = filename.format(counter)
+def create_file_path(name,dir,override=False):
+    if name == 'session':
+        if not os.path.isdir(dir):
+            os.mkdir(dir)
+    counter = 1
+    file_full_path = f"{dir}{name}"
+    if not override:
+        if os.path.isfile(f"{file_full_path}.sup") and os.path.isfile(f"{file_full_path}-{counter}.sup"):
+            while os.path.isfile(f"{file_full_path}-{counter}.sup"): #TODO it may slow down later due to amount of files... algorithm improvement needed later.
+                counter += 1
+            file_full_path = f"{file_full_path}-{counter}.sup"
+            return file_full_path
+        elif os.path.isfile(f"{file_full_path}.sup"):
+            return f"{file_full_path}-{counter}.sup"
+        else:
+            return f"{file_full_path}.sup"
+    else:
+        return f"{file_full_path}.sup"
+
 
 if __name__ == "__main__":
     main()
