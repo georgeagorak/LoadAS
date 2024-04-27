@@ -5,95 +5,28 @@ import re
 import os
 import sys
 import csv
+import time
+import datetime
 
-class User_App:
-    def __init__(self, PID, x_offset, y_offset, width, height,title):
-        self.PID = int(PID)
-        self.x_offset = int(x_offset)
-        self.y_offset = int(y_offset)
-        self.width = int(width)
-        self.height = int(height)
-        self.title = title
-
-    def __str__(self):
-        return f"PID: {self.PID}, x_offset: {self.x_offset},y_offset: {self.y_offset},width: {self.width},height: {self.height}"
-    
-    @property
-    def PID(self):
-        return self._PID
-    @PID.setter
-    def PID(self,PID):
-        try:
-            int(PID)
-        except TypeError:
-            raise TypeError("PID must be integer string or integer")
-        self._PID = PID
-
-    @property
-    def x_offset(self):
-        return self._x_offset
-    @x_offset.setter
-    def x_offset(self,x_offset):
-        try:
-            int(x_offset)
-        except TypeError:
-            raise TypeError("PID must be integer string or integer")
-        self._x_offset = x_offset
-
-    @property
-    def y_offset(self):
-        return self._y_offset
-    @y_offset.setter
-    def y_offset(self,y_offset):
-        try:
-            int(y_offset)
-        except TypeError:
-            raise TypeError("PID must be integer string or integer")
-        self._y_offset = y_offset
-
-    @property
-    def width(self):
-        return self._width
-    @width.setter
-    def width(self,width):
-        try:
-            int(width)
-        except TypeError:
-            raise TypeError("PID must be integer string or integer")
-        self._width = width
-
-    @property
-    def height(self):
-        return self._height
-    @height.setter
-    def height(self,height):
-        try:
-            int(height)
-        except TypeError:
-            raise TypeError("PID must be integer string or integer")
-        self._height = height
-        
-    @property
-    def title(self):
-        return self._title
-    @title.setter
-    def title(self,title):
-        self._title = title
-
+if sys.platform == "linux":
+    import linux_cmds
+else: #TODO more platforms support TBD
+    raise ImportError(f"Sorry: no implementation for your platform ('{sys.platform}') available")
 
 
 def main():
-    logging.basicConfig(filename="myapp.log", level=logging.INFO)
+    logging.basicConfig(filename="LoadASS.log",filemode= 'w',level=logging.INFO)
+    logger.info(str(datetime.datetime.now()))
     logger.info("START")
 
     #Check for os platform...
-    if sys.platform.startswith("linux"):
-            #load_app_session("session.sup")
-            app_list = get_active_apps_info()
-            save_apps_2_setup_file(app_list)
-    elif sys.platform.startswith("win32"):
+    if sys.platform == "linux":
+            load_app_session("session.sup")
+            # app_list = get_active_apps_info()
+            # save_apps_2_setup_file(app_list)
+    elif sys.platform == "win32":
         print("Windows is not yet supported!")
-    elif sys.platform.startswith("darwin"):
+    elif sys.platform == "darwin":
         print("macOS is not yet supported!")
 
     logger.info("END")
@@ -122,7 +55,7 @@ def generate_app_info(s):
     # created with help of: https://regex101.com/r/Op2GDF/1
         # capture relevent information (dic or list) - re
         logger.info("pattern matched in apps_info_temp.txt")
-        temp_user_App = User_App(info.group(3),info.group(4),info.group(5),info.group(6),info.group(7),info.group(9))
+        temp_user_App = linux_cmds.User_App(info.group(3),info.group(4),info.group(5),info.group(6),info.group(7),info.group(9))
     else:
         raise LookupError("str does not match rexp:\n\n" + str + "should match regular expression:\n\n ^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$")
     return temp_user_App
@@ -169,18 +102,59 @@ def load_app_session(filename):
     #TODO subprocess.check_output first for confirming that the commands work
 
     with open(f"{session_files_storage}{filename}","r") as file:
-        for line in file:
+        reader = csv.reader(file)
+        for row in reader:
+        #! row --> row[0]= command, row[1]=x, row[2]=y, row[3]=width and row[4]=height
+            get = lambda x: subprocess.check_output(["/bin/bash", "-c", x]).decode("utf-8")
+            ws1 = get("wmctrl -lp")
+
+            #find command based on comparison to 'database'
+            app_run_cmd = app_cmd(row[0])
+            if app_run_cmd is None:
+                print(f"{row[0]} is not supported by the LoadAS software at the current time! please report this by raising the issue on github page...")
+                logger.info(f"Not suported: {row[0]}")
+                continue
+
             try:
-                subprocess.Popen(f"{line}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.Popen(f"{app_run_cmd}", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except subprocess.CalledProcessError:
-                print(f"Following app: '{line}', is not longer installed, please ")
+                print(f"Following app: '{app_run_cmd}', is not longer installed, the app will be omitted \n if otherwise, please recreate the session file again.")
+                logger.info(f"Not installed: '{app_run_cmd}'")
+            t = 0
+            
+            # Script taken from a StackExchange thread, made by Jacob Vlijm
+            # https://askubuntu.com/questions/613973/how-can-i-start-up-an-application-with-a-pre-defined-window-size-and-position
+            try:
+                while t < 30:      
+                    ws2 = [w.split()[0:3] for w in get("wmctrl -lp").splitlines() if not w in ws1]
+                    procs = [[(p, w[0]) for p in get("ps -e ww").splitlines() \
+                            if row[0] in p and w[2] in p] for w in ws2] #! row[0] used as, row[0] (app_name) !=  app_run_cmd... not always..
+                    if len(procs) > 0:
+                        w_id = procs[0][0][1]
+                        for cmd in [f"wmctrl -ir {w_id} -b remove,maximized_horz", 
+                                    f"wmctrl -ir {w_id} -b remove,maximized_vert", 
+                                    f"xdotool windowsize --sync {procs[0][0][1]} {row[3]} {row[4]}", 
+                                    f"xdotool windowmove {procs[0][0][1]} {row[1]} {row[2]}"]:   
+                            subprocess.call(["/bin/bash", "-c", cmd])
+                        break
+                    time.sleep(0.5)
+                    t = t+1
+            except IndexError:
+                print(f"{app_run_cmd} is not command for {row[0]} or\nterminal does not support this command or\nwmctrl/xdotool is not installed")
+                logger.info(f"Bad cmd: {app_run_cmd},{row[0]}")
+                continue
 
 def isSessionFile(path):
     for file in os.listdir(path):
         if file.endswith(".sup"):
             return True
     return False
-    
+
+def app_cmd(app_str):
+    for app_name in linux_cmds.database:
+        if app_name in app_str:
+            return linux_cmds.database[app_name]
+    return None
 
 # TODO needs some further dev
 # def append_file_name(name):
