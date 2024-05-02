@@ -5,7 +5,8 @@ database = {
     "chrome": "google-chrome",
     "spotify": "spotify",
     "code": "code --unity-launch",
-    "gnome-terminal":"gnome-terminal"
+    "gnome-terminal-server":"gnome-terminal",
+    "Discord":"discord"
 }
 
 def getAllDatabaseKeys():
