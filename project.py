@@ -2,10 +2,12 @@ import logging
 logger = logging.getLogger(__name__)
 import subprocess
 import re
-import os;import sys;
+import os
+import sys
 import csv
 import time;import datetime
 import argparse
+import ntpath
 
 from typing import List
 
@@ -23,51 +25,63 @@ else: #TODO more platforms support
 
 
 def main():
-    logging.basicConfig(filename="LoadASS.log",filemode= 'w',level=logging.INFO)
+    logging.basicConfig(filename="LoadAS-CLI.log",filemode= 'w',level=logging.INFO)
     logger.info(str(datetime.datetime.now()))
     logger.info("START")
 
     parser = argparse.ArgumentParser(
-                    prog='LoadASS-CLI',
-                    description='Active software saving and loading companion application PC OS systems. (.sup) files are only supported',
+                    description='LoadAS-CLI\n Active software saving and loading companion application PC OS systems. (.sup) files are only supported',
                     epilog='Author: George Gorak: https://github.com/JurGOn01')
-    parser.add_argument("-l","--load",help='')
-
-    load_group = parser.add_argument_group('Load session file', '')
-    load_group.add_argument("-s","--save",help='Save current active applications')
-    load_group.add_argument("-f","--file",help=f'Full path of the file or just file name to load (no extension needed). Default location: ./{DEFAULT_FILE_STORAGE}')
-
-    load_group = parser.add_argument_group('Save session file', '')
-    parser.add_argument("-ls","--list",help='Displays all current active applications commands')
-    args = parser.parse_args()
-
+    parser.add_argument("-s","--save",action='store_true',help='Save current active applications')
+    parser.add_argument("-l","--load",action='store_true',help='Load saved applications from specified file')
+    parser.add_argument("-f","--file",help=f'Full path of the file or just file name to load/save (include .sup extension at the end of file name). If onlt filename.sup is provided a default storage location: ./{DEFAULT_FILE_STORAGE} is used')
+    parser.add_argument("-c","--close",action='store_true',help='Close all current active applications')
+    parser.add_argument("-i","--ignore",nargs='+',help='Ignore list of active applications to close, this list must have the exact names specifed by -lss. Run -lss to get exact command for each supported application')
+    parser.add_argument("-ls","--list",action='store_true',help='Displays all current active applications commands')
+    parser.add_argument("-lss","--list_supported",action='store_true',help='Displays all supported active applications commands by LoadAS')
+    
     #Check for os platform...
     if sys.platform == "linux":
             #load_app_session(f"{DEFAULT_FILE_STORAGE}{DEFAULT_FILE_NAME}")
-            app_list = get_active_apps_info()
-            save_app_session(app_list)
-            # ans = input('Closing all current running apps... are you sure?\nIf so, please save any work currently open before proceeding: ')
-            # close_active_apps(ans,app_list,['gnome-terminal','code','gjs'])
-
-            if args.s and args.p:
-                pass
-            elif args.s and not args.p:
-                pass
-    elif sys.platform == "win32":
-        print("Windows is not yet supported!")
-    elif sys.platform == "darwin":
-        print("macOS is not yet supported!")
+            args = parser.parse_args()
+            if args.save: 
+                app_list = get_active_apps_info()
+                if args.file and args.ignore:# saves in custom location
+                    save_app_session(app_list, filepath=args.file, ignore_apps=args.ignore)
+                elif args.file and not args.ignore:
+                    save_app_session(app_list, filepath=args.file)
+                elif not args.file and  args.ignore:
+                    save_app_session(app_list, ignore_apps=args.ignore)
+                else:# saves in default location
+                    save_app_session(app_list)
+            elif args.load and args.file:
+                load_app_session(args.file)
+            elif args.close and args.ignore:
+                app_list = get_active_apps_info()
+                if args.ignore:# closes applications not specified in arg.ignore
+                    close_active_apps(app_list,ignore_apps=args.ignore)
+                else:# closes ALL 
+                    close_active_apps(app_list)
+            elif args.list:
+                app_list = get_active_apps_info()
+                list_active_apps(app_list)
+            elif args.list_supported:
+                print('\nAll supported applications:\n')
+                for key in linux_cmds.getAllDatabaseKeys():
+                    print(f'{key}')
 
     logger.info("END")
 
 
-def save_app_session(ls: List[User_App],filepath="user_sessions/session") -> None:
-    # TODO needs some further dev
-    file_path= create_file_path(filepath)
+def save_app_session(ls: List[User_App],filepath=f"{DEFAULT_FILE_STORAGE}{DEFAULT_FILE_NAME}", ignore_apps = []) -> None:
     
-    with open(f"{file_path}.sup", "w") as file: # .sup - (short for saved user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
+    filepath = filename_with_default_dir(filepath)
+    file_path,_= adjust_file_name_and_path(filepath)
+
+    with open(f"{file_path}", "w") as file: # .sup - (short for saved user programs) plain text format containing commands of apps to load by LoadAS. This file/s with .sup format is/are produced by the user.
         writer = csv.DictWriter(file,fieldnames=["command","x_offset","y_offset","width","height"])
-        ls = filter_out_app_from_list(ls,['gjs'])
+        ignore_apps.append('gjs')
+        ls = remove_app_from_list(ls,ignore_apps)
         for app in ls:
             try:
                 run_command = subprocess.check_output(f"ps -p {app.PID} -o cmd=",shell=True,text=True)
@@ -84,15 +98,12 @@ def save_app_session(ls: List[User_App],filepath="user_sessions/session") -> Non
                 continue
 
 def load_app_session(filepath) -> None:
-    #initial checks
-    if not os.path.isdir(DEFAULT_FILE_STORAGE):
-        raise NameError("There are no session files to load: user_sessions/ does not exits - fix: create a session file.")
-    if not isSessionFile(DEFAULT_FILE_STORAGE):
-        raise NameError("There are no session files to load: user_sessions/ does exits but no single .sep session file could be found (deleted manually?) - fix: create a session file.")
-    
+
+    filepath = filename_with_default_dir(filepath)
+
     #TODO subprocess.check_output first for confirming that the commands work
 
-    with open(f"{filepath}.sup","r") as file:
+    with open(f"{filepath.removesuffix('.sup')}.sup","r") as file:
         reader = csv.reader(file)
         for row in reader:
         #! row --> row[0]= command, row[1]=x, row[2]=y, row[3]=width and row[4]=height
@@ -116,7 +127,7 @@ def load_app_session(filepath) -> None:
             # Script taken from a StackExchange thread, made by Jacob Vlijm
             # https://askubuntu.com/questions/613973/how-can-i-start-up-an-application-with-a-pre-defined-window-size-and-position
             try:
-                while t < 30:      
+                while t < 60:      
                     ws2 = [w.split()[0:3] for w in get("wmctrl -lp").splitlines() if not w in ws1]
                     procs = [[(p, w[0]) for p in get("ps -e ww").splitlines() \
                             if row[0] in p and w[2] in p] for w in ws2] #! row[0] used as, row[0] (app_name) !=  app_run_cmd... not always..
@@ -135,11 +146,10 @@ def load_app_session(filepath) -> None:
                 logger.info(f"Bad cmd: {app_run_cmd},{row[0]}")
                 continue
 
-def close_active_apps(s: str,active_apps: List[User_App],ignore_apps: List[str]) -> None:
-    if s.lower() == 'yes' or s.lower() == 'y':
-        filtered_active_apps = filter_out_app_from_list(active_apps,ignore_apps)# allows for more to ignore/remove - when closing apps, LoadAS shoudl not be closed!
-        for app in filtered_active_apps:
-            subprocess.run(f"kill -9 {app.PID}",shell=True)
+def close_active_apps(active_apps: List[User_App],ignore_apps = []) -> None:
+    filtered_active_apps = remove_app_from_list(active_apps,ignore_apps)# allows for more to ignore/remove - when closing apps, LoadAS shoudl not be closed!
+    for app in filtered_active_apps:
+        subprocess.run(f"kill -9 {app.PID}",shell=True)
 
 def get_active_apps_info() -> List[User_App]:
     """
@@ -186,9 +196,9 @@ def get_app_cmd(app_str: str)-> str | None:
             return linux_cmds.database[app_name]
     return None
 
-def filter_out_app_from_list(ls: List[User_App],app_names:List[str]) -> List[User_App]:
+def remove_app_from_list(ls: List[User_App],app_names:List[str]) -> List[User_App]:
     remove_index = []
-    for app_name in app_names:
+    for app_name in app_names: #! apps names have to be the name of application, not the command!
         for app in ls:
             try:
                 run_command = subprocess.check_output(f"ps -p {app.PID} -o cmd=",shell=True,text=True)
@@ -203,34 +213,53 @@ def filter_out_app_from_list(ls: List[User_App],app_names:List[str]) -> List[Use
     
     return ls
 
-def create_file_path(filepath: str,override=False) -> str:
-    _,filename = filepath.split('/')
-    if filename == DEFAULT_FILE_NAME:
-        if not os.path.isdir(dir):
-            os.mkdir(dir)
+def adjust_file_name_and_path(filepath: str,override=False) -> str:
+
+    if not os.path.isdir(os.path.dirname(filepath)):
+        os.mkdir(os.path.dirname(filepath))
+    
+    filepath = filepath.removesuffix('.sup')
+
     counter = 1
+    
+    #Ensures that the file will be unique (+1 at the end...)
     if not override:
         if os.path.isfile(f"{filepath}.sup") and os.path.isfile(f"{filepath}-{counter}.sup"):
-            while os.path.isfile(f"{filepath}-{counter}.sup"): #TODO it may slow down later due to amount of files... algorithm improvement needed later.
+            while os.path.isfile(f"{filepath}{counter}.sup"): #TODO possible speed issues, with large amount of files.
                 counter += 1
-            filepath = f"{filepath}-{counter}.sup"
-            return filepath
+            filepath = f"{filepath}{counter}.sup"
+            return filepath, counter
         elif os.path.isfile(f"{filepath}.sup"):
-            return f"{filepath}-{counter}.sup"
+            return f"{filepath}{counter}.sup", counter
         else:
-            return f"{filepath}.sup"
+            return f"{filepath}.sup",counter
     else:
-        return f"{filepath}.sup"
+        return f"{filepath}.sup", (counter - 1)
 
 def list_active_apps(ls: List[User_App]) -> str:
     apps_list_str = ''
-    ls = filter_out_app_from_list(ls,['gjs'])
+    ls = remove_app_from_list(ls,['gjs'])
     for app in ls:
         run_command = subprocess.check_output(f"ps -p {app.PID} -o cmd=",shell=True,text=True)
         apps_list_str += str(os.path.basename(run_command).removesuffix('\n')) + '\n'
     
     return apps_list_str
 
+def path_leaf(filename_or_path): #base taken from Lauritz V. Thaulow - https://stackoverflow.com/questions/8384737/extract-file-name-from-path-no-matter-what-the-os-path-format
+    if '/'  in filename_or_path or '\\' in path:
+        head, tail = ntpath.split(filename_or_path)
+        return tail or ntpath.basename(head)
+    return filename_or_path
+
+def filename_with_default_dir(filepath):
+    if '/' not in filepath: #User only provided a name, therefore default location used...
+        if not os.path.isdir(DEFAULT_FILE_STORAGE):
+            raise NameError("There are no session files to load: user_sessions/ does not exits - fix: create a session file.")
+        if not isSessionFile(DEFAULT_FILE_STORAGE):
+            raise NameError("There are no session files to load: user_sessions/ does exits but no single .sep session file could be found (deleted manually?) - fix: create a session file.")
+        filepath = DEFAULT_FILE_STORAGE + filepath
+        return filepath
+    return filepath
 
 if __name__ == "__main__":
     main()
