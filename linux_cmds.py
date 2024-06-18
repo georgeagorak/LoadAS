@@ -2,6 +2,7 @@
 # e.g. chrome's command is not chrome but google-chrome... and therefore finding the cmd via PID is not conclusive.
 #TODO As result this simpler solution is used for apt-get and snap applications. (flatpaks need more attention later in development)
 database = {
+    #name : command
     "chrome": "google-chrome",
     "spotify": "spotify",
     "code": "code --unity-launch",

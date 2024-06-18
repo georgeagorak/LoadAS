@@ -28,7 +28,7 @@ def main():
     logging.basicConfig(filename="LoadAS-CLI.log",filemode= 'w',level=logging.INFO)
     logger.info(str(datetime.datetime.now()))
     logger.info("START")
-
+    
     parser = argparse.ArgumentParser(
                     description='LoadAS-CLI\n Active software saving and loading companion application PC OS systems. (.sup) files are only supported',
                     epilog='Author: George Gorak: https://github.com/JurGOn01')
@@ -73,7 +73,7 @@ def main():
     logger.info("END")
 
 
-def save_app_session(ls: List[User_App],filepath=f"{DEFAULT_FILE_STORAGE}{DEFAULT_FILE_NAME}", ignore_apps = []) -> None:
+def save_app_session(ls: List[User_App],filepath=f"{DEFAULT_FILE_STORAGE}{DEFAULT_FILE_NAME}", ignore_apps=[]) -> None:
     
     filepath = filename_with_default_dir(filepath)
     file_path,_= adjust_file_name_and_path(filepath)
@@ -97,7 +97,7 @@ def save_app_session(ls: List[User_App],filepath=f"{DEFAULT_FILE_STORAGE}{DEFAUL
                 logger.info(f"Flatpak app: {app.title}")
                 continue
 
-def load_app_session(filepath) -> None:
+def load_app_session(filepath,ignore_apps=[]) -> None:
 
     filepath = filename_with_default_dir(filepath)
 
@@ -107,6 +107,11 @@ def load_app_session(filepath) -> None:
         reader = csv.reader(file)
         for row in reader:
         #! row --> row[0]= command, row[1]=x, row[2]=y, row[3]=width and row[4]=height
+
+            if row[0] in ignore_apps:
+                continue
+
+
             get = lambda x: subprocess.check_output(["/bin/bash", "-c", x]).decode("utf-8")
             ws1 = get("wmctrl -lp")
 
@@ -127,7 +132,7 @@ def load_app_session(filepath) -> None:
             # Script taken from a StackExchange thread, made by Jacob Vlijm
             # https://askubuntu.com/questions/613973/how-can-i-start-up-an-application-with-a-pre-defined-window-size-and-position
             try:
-                while t < 60:      
+                while t < 30:      
                     ws2 = [w.split()[0:3] for w in get("wmctrl -lp").splitlines() if not w in ws1]
                     procs = [[(p, w[0]) for p in get("ps -e ww").splitlines() \
                             if row[0] in p and w[2] in p] for w in ws2] #! row[0] used as, row[0] (app_name) !=  app_run_cmd... not always..
@@ -147,7 +152,7 @@ def load_app_session(filepath) -> None:
                 continue
 
 def close_active_apps(active_apps: List[User_App],ignore_apps = []) -> None:
-    filtered_active_apps = remove_app_from_list(active_apps,ignore_apps)# allows for more to ignore/remove - when closing apps, LoadAS shoudl not be closed!
+    filtered_active_apps = remove_app_from_list(active_apps,ignore_apps)# allows for more to ignore/remove
     for app in filtered_active_apps:
         subprocess.run(f"kill -9 {app.PID}",shell=True)
 
@@ -168,7 +173,8 @@ def get_active_apps_info() -> List[User_App]:
         for line in file:
             app = generate_app_info(line)
             logger.info(app)
-            app_list.append(app)
+            if app: #avoid NoneType due to LoadAS 
+                app_list.append(app)
 
     #return the relevent captured data (dic or list)
     logger.info(app_list)
@@ -176,13 +182,15 @@ def get_active_apps_info() -> List[User_App]:
 
 def generate_app_info(s: str) -> User_App:
     if info := re.match(r"^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$",s):
-    # created with help of: https://regex101.com/r/Op2GDF/1
+    # created with help of: https://regex101.com/r/ez1cfX/1
         # capture relevent information (dic or list) - re
         logger.info("pattern matched in apps_info_temp.txt")
         temp_user_App = User_App(info.group(3),info.group(4),info.group(5),info.group(6),info.group(7),info.group(9))
+        return temp_user_App
+    elif 'LoadAS' in s:
+        pass #do nothing, as this is GUI
     else:
-        raise LookupError("str does not match rexp:\n\n" + str + "should match regular expression:\n\n ^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$")
-    return temp_user_App
+        raise LookupError("str does not match rexp:\n\n" + s + "should match regular expression:\n\n ^(0x[0-9A-Fa-f]{8})\s{1,2}(-\d|\d)\s(\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{1,}|-\d{1,})\s{1,}(\d{3,4})\s{1,4}(\d{3,4})\s{1,4}([A-Za-z0-9-]{1,})\s(.{1,})$")
 
 def isSessionFile(path: str) -> bool:
     for file in os.listdir(path):
@@ -224,7 +232,7 @@ def adjust_file_name_and_path(filepath: str,override=False) -> str:
     
     #Ensures that the file will be unique (+1 at the end...)
     if not override:
-        if os.path.isfile(f"{filepath}.sup") and os.path.isfile(f"{filepath}-{counter}.sup"):
+        if os.path.isfile(f"{filepath}.sup") and os.path.isfile(f"{filepath}{counter}.sup"):
             while os.path.isfile(f"{filepath}{counter}.sup"): #TODO possible speed issues, with large amount of files.
                 counter += 1
             filepath = f"{filepath}{counter}.sup"
@@ -244,12 +252,6 @@ def list_active_apps(ls: List[User_App]) -> str:
         apps_list_str += str(os.path.basename(run_command).removesuffix('\n')) + '\n'
     
     return apps_list_str
-
-def path_leaf(filename_or_path): #base taken from Lauritz V. Thaulow - https://stackoverflow.com/questions/8384737/extract-file-name-from-path-no-matter-what-the-os-path-format
-    if '/'  in filename_or_path or '\\' in path:
-        head, tail = ntpath.split(filename_or_path)
-        return tail or ntpath.basename(head)
-    return filename_or_path
 
 def filename_with_default_dir(filepath):
     if '/' not in filepath: #User only provided a name, therefore default location used...
