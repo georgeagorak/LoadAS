@@ -1,13 +1,16 @@
-#! At the moment database is used as its difficult to support apps some apps,
+#! At the moment database is used as its difficult to support some apps,
 # e.g. chrome's command is not chrome but google-chrome... and therefore finding the cmd via PID is not conclusive.
 #TODO As result this simpler solution is used for apt-get and snap applications. (flatpaks need more attention later in development)
 database = {
-    #name : command
+    #name (from ps) : command
     "chrome": "google-chrome",
     "spotify": "spotify",
     "code": "code --unity-launch",
     "gnome-terminal-server":"gnome-terminal",
-    "Discord":"discord"
+    "Discord":"discord",
+    "gedit":"gedit",
+    "nautilus":"nautilus",
+    "obs":"obs"
 }
 
 def getAllDatabaseKeys():
